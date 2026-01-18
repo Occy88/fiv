@@ -15,41 +15,22 @@ A fast, lightweight image viewer built in Rust.
 
 ## Installation
 
-### From Package Managers
-
-**Debian/Ubuntu:**
 ```bash
-# Download the latest .deb from releases
-sudo dpkg -i fiv_*.deb
+cargo install fiv
 ```
 
-**Fedora/RHEL:**
+### Other Options
+
+**Shell installer (Linux/macOS):**
 ```bash
-# Download the latest .rpm from releases
-sudo rpm -i fiv-*.rpm
+curl -LsSf https://github.com/Occy88/fiv/releases/latest/download/fiv-installer.sh | sh
 ```
 
-**Arch Linux (AUR):**
+**From source:**
 ```bash
-yay -S fiv
-```
-
-**macOS (Homebrew):**
-```bash
-brew tap Occy88/tap
-brew install fiv
-```
-
-### From Source
-
-```bash
-# Clone the repository
 git clone https://github.com/Occy88/fiv.git
 cd fiv
-
-# Build and install
-make release
-sudo make install
+cargo build --release
 ```
 
 ## Usage
