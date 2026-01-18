@@ -80,7 +80,9 @@ fn preloader_loop(
                 // even if user navigated (the images are still useful)
                 let slot = store.slot(task.index);
                 let path = &slot.meta.path;
-                decoder.decode(path, task.quality).map(|data| (task.index, data))
+                decoder
+                    .decode(path, task.quality)
+                    .map(|data| (task.index, data))
             })
             .collect();
 
@@ -193,14 +195,8 @@ fn evict_far_images(store: &ImageStore, current: usize, config: &PreloadConfig) 
 }
 
 /// Create image store with paths only (fast startup, no I/O)
-pub fn create_store_fast(
-    paths: Vec<std::path::PathBuf>,
-    budget: Arc<MemoryBudget>,
-) -> ImageStore {
-    let metas: Vec<ImageMeta> = paths
-        .into_iter()
-        .map(ImageMeta::new)
-        .collect();
+pub fn create_store_fast(paths: Vec<std::path::PathBuf>, budget: Arc<MemoryBudget>) -> ImageStore {
+    let metas: Vec<ImageMeta> = paths.into_iter().map(ImageMeta::new).collect();
 
     ImageStore::with_metadata(metas, budget)
 }

@@ -51,7 +51,9 @@ pub fn render_image(
     let img_h = img.height as usize;
 
     if win_w == 0 || win_h == 0 || img_w == 0 || img_h == 0 {
-        return RenderResult { quality: Some(img.quality) };
+        return RenderResult {
+            quality: Some(img.quality),
+        };
     }
 
     // Calculate scaling to fit window while maintaining aspect ratio (letterbox)
@@ -79,7 +81,9 @@ pub fn render_image(
         display_h,
     );
 
-    RenderResult { quality: Some(img.quality) }
+    RenderResult {
+        quality: Some(img.quality),
+    }
 }
 
 /// Clear frame buffer to a solid color
@@ -156,7 +160,9 @@ pub fn blit_bilinear(
     dst_h: usize,
 ) {
     if dst_w == 0 || dst_h == 0 || src_w < 2 || src_h < 2 {
-        blit_scaled(src, src_w, src_h, dst, dst_stride, dst_x, dst_y, dst_w, dst_h);
+        blit_scaled(
+            src, src_w, src_h, dst, dst_stride, dst_x, dst_y, dst_w, dst_h,
+        );
         return;
     }
 

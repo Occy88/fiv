@@ -58,7 +58,9 @@ impl Decoder {
             Self::resize_bilinear(&rgba, width, height, target_w, target_h)
         };
 
-        Some(Arc::new(ImageData::new(final_rgba, target_w, target_h, quality)))
+        Some(Arc::new(ImageData::new(
+            final_rgba, target_w, target_h, quality,
+        )))
     }
 
     /// Check if file is JPEG by extension
@@ -108,13 +110,7 @@ impl Decoder {
     }
 
     /// Resize using bilinear interpolation
-    fn resize_bilinear(
-        data: &[u8],
-        src_w: u32,
-        src_h: u32,
-        dst_w: u32,
-        dst_h: u32,
-    ) -> Vec<u8> {
+    fn resize_bilinear(data: &[u8], src_w: u32, src_h: u32, dst_w: u32, dst_h: u32) -> Vec<u8> {
         if src_w == dst_w && src_h == dst_h {
             return data.to_vec();
         }
@@ -205,7 +201,9 @@ mod tests {
     #[test]
     fn test_resize() {
         // 2x2 image, all red
-        let src = vec![255, 0, 0, 255, 255, 0, 0, 255, 255, 0, 0, 255, 255, 0, 0, 255];
+        let src = vec![
+            255, 0, 0, 255, 255, 0, 0, 255, 255, 0, 0, 255, 255, 0, 0, 255,
+        ];
         let dst = Decoder::resize_bilinear(&src, 2, 2, 4, 4);
 
         // Should be 4x4, still mostly red

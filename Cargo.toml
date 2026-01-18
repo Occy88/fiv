@@ -1,8 +1,8 @@
 [package]
 name = "fiv"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
-description = "A super efficient image viewer with zero loading time"
+description = "A fast, lightweight image viewer"
 authors = ["c4r4mel"]
 license = "MIT"
 repository = "https://github.com/Occy88/fiv"
@@ -12,9 +12,9 @@ keywords = ["image", "viewer", "fast", "gui"]
 categories = ["multimedia::images", "command-line-utilities"]
 
 [dependencies]
-# Window and graphics - use compatible versions
-winit = "0.28"
-pixels = "0.13"
+# Window and graphics
+winit = "0.30"
+pixels = "0.15"
 
 # Image decoding
 image = { version = "0.25", default-features = false, features = ["jpeg", "png", "gif", "bmp", "webp"] }
@@ -51,12 +51,12 @@ maintainer = "c4r4mel"
 copyright = "2024, c4r4mel"
 license-file = ["LICENSE", "0"]
 extended-description = """
-Fiv (Fast Image Viewer) is a high-performance image viewer built in Rust.
+Fiv (Fast Image Viewer) is a fast, lightweight image viewer built in Rust.
 Features:
-- Zero loading time with predictive preloading
-- Lock-free architecture for smooth navigation
+- Instant navigation with background preloading
+- Smooth scrolling through large image collections
 - Supports JPEG, PNG, GIF, BMP, and WebP formats
-- Minimal memory footprint with smart caching
+- Minimal memory usage with smart caching
 """
 depends = "$auto"
 section = "graphics"

@@ -5,11 +5,6 @@
 //! - Input state tracking for immediate press-and-hold response
 //! - Pure render functions (no side effects)
 //! - Background preloader that never blocks the main thread
-//!
-//! The key insight is treating the viewer as a "window over raw data":
-//! - Main thread reads from slots atomically, never waits
-//! - Background threads upgrade slot data atomically
-//! - Rendering is always immediate with best available data
 
 mod config;
 mod decode;
@@ -26,27 +21,313 @@ use pixels::{Pixels, SurfaceTexture};
 use preload::{create_store_fast, spawn_preloader};
 use render::render_image;
 use state::{InputState, SharedState, ViewState};
-use store::{ImageStore, MemoryBudget};
 use std::path::PathBuf;
 use std::sync::Arc;
-use winit::dpi::{LogicalSize, PhysicalSize};
-use winit::event::{ElementState, Event, VirtualKeyCode, WindowEvent};
-use winit::event_loop::{ControlFlow, EventLoop};
-use winit::window::{Window, WindowBuilder};
+use store::{ImageStore, MemoryBudget};
+use winit::application::ApplicationHandler;
+use winit::dpi::LogicalSize;
+use winit::event::{ElementState, WindowEvent};
+use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
+use winit::keyboard::{KeyCode, PhysicalKey};
+use winit::window::{Window, WindowId};
 
 #[derive(Parser, Debug)]
 #[command(name = "fiv")]
 #[command(about = "A high-performance image viewer", long_about = None)]
 struct Args {
-    /// Directory containing images
     #[arg(default_value = ".")]
     directory: PathBuf,
+}
+
+/// Key actions for data-driven input handling
+#[derive(Clone, Copy)]
+enum KeyAction {
+    NavigateRight,
+    NavigateLeft,
+    JumpHome,
+    JumpEnd,
+    Quit,
+}
+
+/// Key binding table - maps physical keys to actions
+const KEY_BINDINGS: &[(KeyCode, KeyAction)] = &[
+    (KeyCode::ArrowRight, KeyAction::NavigateRight),
+    (KeyCode::KeyD, KeyAction::NavigateRight),
+    (KeyCode::Space, KeyAction::NavigateRight),
+    (KeyCode::ArrowLeft, KeyAction::NavigateLeft),
+    (KeyCode::KeyA, KeyAction::NavigateLeft),
+    (KeyCode::Home, KeyAction::JumpHome),
+    (KeyCode::End, KeyAction::JumpEnd),
+    (KeyCode::Escape, KeyAction::Quit),
+    (KeyCode::KeyQ, KeyAction::Quit),
+];
+
+fn lookup_key_action(key: KeyCode) -> Option<KeyAction> {
+    KEY_BINDINGS
+        .iter()
+        .find(|(k, _)| *k == key)
+        .map(|(_, action)| *action)
+}
+
+/// Initialized window state - created once window is ready
+struct WindowState {
+    window: Arc<Window>,
+    pixels: Pixels<'static>,
+    view_state: ViewState,
+    _preloader_handle: std::thread::JoinHandle<()>,
+}
+
+impl WindowState {
+    fn create(
+        event_loop: &ActiveEventLoop,
+        config: &Config,
+        store: &Arc<ImageStore>,
+        shared_state: &Arc<SharedState>,
+        decoder: &Arc<Decoder>,
+    ) -> Self {
+        let window_attributes = Window::default_attributes()
+            .with_title("Fiv - Loading...")
+            .with_inner_size(LogicalSize::new(
+                config.render.default_width,
+                config.render.default_height,
+            ));
+
+        let window = Arc::new(
+            event_loop
+                .create_window(window_attributes)
+                .expect("Failed to create window"),
+        );
+
+        let size = window.inner_size();
+        let surface_texture = SurfaceTexture::new(size.width, size.height, Arc::clone(&window));
+        let pixels = Pixels::new(size.width, size.height, surface_texture)
+            .expect("Failed to create pixel buffer");
+
+        let view_state = ViewState::new(store.len(), size.width, size.height);
+
+        // Load first image synchronously for immediate display
+        if let Some(slot) = store.get(0) {
+            if let Some(data) = decoder.decode(&slot.meta.path, QualityTier::Full) {
+                store.insert(0, data);
+            }
+        }
+
+        // Spawn preloader after first image
+        let preloader_handle = spawn_preloader(
+            Arc::clone(store),
+            Arc::clone(shared_state),
+            Arc::clone(decoder),
+            config.clone(),
+        );
+
+        Self {
+            window,
+            pixels,
+            view_state,
+            _preloader_handle: preloader_handle,
+        }
+    }
+
+    fn render(&mut self, store: &ImageStore, config: &Config) {
+        let frame = self.pixels.frame_mut();
+        let image_data = store.read(self.view_state.current_index);
+
+        let result = render_image(
+            image_data.as_ref(),
+            frame,
+            self.view_state.window_width,
+            self.view_state.window_height,
+            config.render.background_color,
+        );
+
+        match result.quality {
+            Some(quality) => self.view_state.render_complete(quality),
+            None => self.view_state.needs_render = true,
+        }
+
+        let _ = self.pixels.render();
+    }
+
+    fn update_title(&self, store: &ImageStore) {
+        let filename = store
+            .get(self.view_state.current_index)
+            .and_then(|slot| slot.meta.path.file_name())
+            .map(|s| s.to_string_lossy().to_string())
+            .unwrap_or_default();
+
+        self.window.set_title(&self.view_state.title(&filename));
+    }
+
+    fn handle_resize(&mut self, width: u32, height: u32) {
+        self.view_state.resize(width, height);
+        let _ = self.pixels.resize_surface(width, height);
+        let _ = self.pixels.resize_buffer(width, height);
+    }
+
+    fn check_quality_upgrade(&mut self, store: &ImageStore) {
+        if self.view_state.needs_render || !self.view_state.needs_quality_upgrade() {
+            return;
+        }
+
+        let dominated_by_preloader = store
+            .get(self.view_state.current_index)
+            .and_then(|slot| slot.current_quality())
+            .map(|q| Some(q) > self.view_state.last_render_quality)
+            .unwrap_or(false);
+
+        if dominated_by_preloader {
+            self.view_state.signal_quality_upgrade();
+        }
+    }
+
+    fn control_flow(&self, input_state: &InputState) -> ControlFlow {
+        let active = input_state.is_navigating()
+            || self.view_state.needs_render
+            || self.view_state.needs_quality_upgrade();
+
+        if active {
+            ControlFlow::Poll
+        } else {
+            ControlFlow::Wait
+        }
+    }
+}
+
+/// Application with two-phase initialization
+struct App {
+    config: Config,
+    decoder: Arc<Decoder>,
+    store: Arc<ImageStore>,
+    shared_state: Arc<SharedState>,
+    input_state: InputState,
+    window_state: Option<WindowState>,
+}
+
+impl App {
+    fn new(
+        config: Config,
+        decoder: Arc<Decoder>,
+        store: Arc<ImageStore>,
+        shared_state: Arc<SharedState>,
+    ) -> Self {
+        Self {
+            config,
+            decoder,
+            store,
+            shared_state,
+            input_state: InputState::new(),
+            window_state: None,
+        }
+    }
+
+    fn handle_key_action(
+        &mut self,
+        action: KeyAction,
+        pressed: bool,
+        event_loop: &ActiveEventLoop,
+    ) {
+        match action {
+            KeyAction::NavigateRight => self.input_state.set_right(pressed),
+            KeyAction::NavigateLeft => self.input_state.set_left(pressed),
+            KeyAction::JumpHome if pressed => self.input_state.home_pressed = true,
+            KeyAction::JumpEnd if pressed => self.input_state.end_pressed = true,
+            KeyAction::Quit if pressed => {
+                self.shared_state.shutdown();
+                event_loop.exit();
+            }
+            _ => {}
+        }
+    }
+}
+
+impl ApplicationHandler for App {
+    fn resumed(&mut self, event_loop: &ActiveEventLoop) {
+        if self.window_state.is_some() {
+            return;
+        }
+
+        let mut ws = WindowState::create(
+            event_loop,
+            &self.config,
+            &self.store,
+            &self.shared_state,
+            &self.decoder,
+        );
+
+        ws.render(&self.store, &self.config);
+        ws.update_title(&self.store);
+        self.window_state = Some(ws);
+    }
+
+    fn window_event(
+        &mut self,
+        event_loop: &ActiveEventLoop,
+        _window_id: WindowId,
+        event: WindowEvent,
+    ) {
+        let ws = match self.window_state.as_mut() {
+            Some(ws) => ws,
+            None => return,
+        };
+
+        match event {
+            WindowEvent::CloseRequested => {
+                self.shared_state.shutdown();
+                event_loop.exit();
+            }
+
+            WindowEvent::KeyboardInput { event, .. } => {
+                if let PhysicalKey::Code(key) = event.physical_key {
+                    if let Some(action) = lookup_key_action(key) {
+                        self.handle_key_action(
+                            action,
+                            event.state == ElementState::Pressed,
+                            event_loop,
+                        );
+                    }
+                }
+            }
+
+            WindowEvent::Resized(size) if size.width > 0 && size.height > 0 => {
+                ws.handle_resize(size.width, size.height);
+            }
+
+            WindowEvent::RedrawRequested => {
+                ws.render(&self.store, &self.config);
+            }
+
+            _ => {}
+        }
+    }
+
+    fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
+        let ws = match self.window_state.as_mut() {
+            Some(ws) => ws,
+            None => return,
+        };
+
+        event_loop.set_control_flow(ws.control_flow(&self.input_state));
+
+        // Process navigation
+        if let Some(delta) = self.input_state.process(&self.config.input) {
+            ws.view_state.navigate(delta);
+            self.shared_state.set_current(ws.view_state.current_index);
+            ws.update_title(&self.store);
+        }
+
+        ws.check_quality_upgrade(&self.store);
+
+        if ws.view_state.needs_render {
+            ws.render(&self.store, &self.config);
+            ws.update_title(&self.store);
+            ws.window.request_redraw();
+        }
+    }
 }
 
 fn main() {
     let args = Args::parse();
 
-    // Validate directory
     let dir = args.directory.canonicalize().unwrap_or_else(|_| {
         eprintln!(
             "Error: Cannot access directory '{}'",
@@ -60,31 +341,9 @@ fn main() {
         std::process::exit(1);
     }
 
-    // Load configuration
     let config = Config::default();
-
-    // Create window and event loop FIRST for fast startup
-    let event_loop = EventLoop::new();
-
-    let window = WindowBuilder::new()
-        .with_title("Fiv - Loading...")
-        .with_inner_size(LogicalSize::new(
-            config.render.default_width,
-            config.render.default_height,
-        ))
-        .build(&event_loop)
-        .expect("Failed to create window");
-
-    let size = window.inner_size();
-    let surface_texture = SurfaceTexture::new(size.width, size.height, &window);
-    let mut pixels = Pixels::new(size.width, size.height, surface_texture)
-        .expect("Failed to create pixel buffer");
-
-    // Initialize components
     let decoder = Arc::new(Decoder::new());
     let budget = Arc::new(MemoryBudget::from_config(&config));
-
-    // Scan directory (fast - just lists files)
     let paths = scan_directory(&dir, &decoder);
 
     if paths.is_empty() {
@@ -96,209 +355,12 @@ fn main() {
         std::process::exit(1);
     }
 
-    // Create store WITHOUT reading metadata (fast)
     let store = Arc::new(create_store_fast(paths, Arc::clone(&budget)));
-
-    // Create shared state for main/preloader communication
     let shared_state = Arc::new(SharedState::new());
     shared_state.set_total(store.len());
 
-    // Load first image on main thread for immediate display
-    if let Some(slot) = store.get(0) {
-        if let Some(data) = decoder.decode(&slot.meta.path, QualityTier::Full) {
-            store.insert(0, data);
-        }
-    }
+    let event_loop = EventLoop::new().expect("Failed to create event loop");
+    let mut app = App::new(config, decoder, store, shared_state);
 
-    // Spawn preloader thread AFTER first image is loaded
-    let _preloader_handle = spawn_preloader(
-        Arc::clone(&store),
-        Arc::clone(&shared_state),
-        Arc::clone(&decoder),
-        config.clone(),
-    );
-
-    // Initialize state
-    let mut view_state = ViewState::new(store.len(), size.width, size.height);
-    let mut input_state = InputState::new();
-
-    // Initial render
-    do_render(&store, &mut view_state, &mut pixels, &config);
-    update_title(&window, &store, &view_state);
-
-    // Run event loop
-    event_loop.run(move |event, _, control_flow| {
-        // Determine control flow based on state
-        *control_flow = if input_state.is_navigating() || view_state.needs_render || view_state.needs_quality_upgrade() {
-            ControlFlow::Poll // Active mode
-        } else {
-            ControlFlow::Wait // Power-efficient mode
-        };
-
-        match event {
-            Event::WindowEvent { event, .. } => {
-                handle_window_event(
-                    event,
-                    &mut input_state,
-                    &mut view_state,
-                    &shared_state,
-                    &window,
-                    &mut pixels,
-                    control_flow,
-                );
-            }
-
-            Event::MainEventsCleared => {
-                // Process input state and navigate if needed
-                if let Some(delta) = input_state.process(&config.input) {
-                    view_state.navigate(delta);
-                    shared_state.set_current(view_state.current_index);
-                    update_title(&window, &store, &view_state);
-                }
-
-                // Check for quality upgrades from preloader
-                if !view_state.needs_render && view_state.needs_quality_upgrade() {
-                    if let Some(slot) = store.get(view_state.current_index) {
-                        if let Some(current_quality) = slot.current_quality() {
-                            if Some(current_quality) > view_state.last_render_quality {
-                                view_state.signal_quality_upgrade();
-                            }
-                        }
-                    }
-                }
-
-                // Render if needed
-                if view_state.needs_render {
-                    do_render(&store, &mut view_state, &mut pixels, &config);
-                    update_title(&window, &store, &view_state);
-                }
-            }
-
-            Event::RedrawRequested(_) => {
-                // Fallback render on explicit redraw request
-                do_render(&store, &mut view_state, &mut pixels, &config);
-            }
-
-            _ => {}
-        }
-    });
-}
-
-/// Handle window events
-fn handle_window_event(
-    event: WindowEvent,
-    input_state: &mut InputState,
-    view_state: &mut ViewState,
-    shared_state: &SharedState,
-    window: &Window,
-    pixels: &mut Pixels,
-    control_flow: &mut ControlFlow,
-) {
-    match event {
-        WindowEvent::CloseRequested => {
-            shared_state.shutdown();
-            *control_flow = ControlFlow::Exit;
-        }
-
-        WindowEvent::KeyboardInput { input, .. } => {
-            if let Some(key) = input.virtual_keycode {
-                let pressed = input.state == ElementState::Pressed;
-
-                match key {
-                    // Navigation keys - track state
-                    VirtualKeyCode::Right | VirtualKeyCode::D | VirtualKeyCode::Space => {
-                        input_state.set_right(pressed);
-                    }
-                    VirtualKeyCode::Left | VirtualKeyCode::A => {
-                        input_state.set_left(pressed);
-                    }
-
-                    // Single-shot keys
-                    VirtualKeyCode::Home if pressed => {
-                        input_state.home_pressed = true;
-                    }
-                    VirtualKeyCode::End if pressed => {
-                        input_state.end_pressed = true;
-                    }
-
-                    // Exit
-                    VirtualKeyCode::Escape | VirtualKeyCode::Q if pressed => {
-                        shared_state.shutdown();
-                        *control_flow = ControlFlow::Exit;
-                    }
-
-                    _ => {}
-                }
-            }
-        }
-
-        WindowEvent::Resized(new_size) => {
-            handle_resize(new_size, view_state, pixels, window);
-        }
-
-        _ => {}
-    }
-}
-
-/// Handle window resize
-fn handle_resize(
-    new_size: PhysicalSize<u32>,
-    view_state: &mut ViewState,
-    pixels: &mut Pixels,
-    _window: &Window,
-) {
-    if new_size.width > 0 && new_size.height > 0 {
-        view_state.resize(new_size.width, new_size.height);
-        let _ = pixels.resize_surface(new_size.width, new_size.height);
-        let _ = pixels.resize_buffer(new_size.width, new_size.height);
-    }
-}
-
-/// Perform rendering
-fn do_render(
-    store: &ImageStore,
-    view_state: &mut ViewState,
-    pixels: &mut Pixels,
-    config: &Config,
-) {
-    let frame = pixels.frame_mut();
-
-    // Get current image data (lock-free read)
-    let image_data = store.read(view_state.current_index);
-
-    // Render
-    let result = render_image(
-        image_data.as_ref(),
-        frame,
-        view_state.window_width,
-        view_state.window_height,
-        config.render.background_color,
-    );
-
-    // Update state
-    if let Some(quality) = result.quality {
-        view_state.render_complete(quality);
-    } else {
-        // No image available - request redraw later
-        view_state.needs_render = true;
-    }
-
-    // Submit to GPU
-    let _ = pixels.render();
-}
-
-/// Update window title
-fn update_title(window: &Window, store: &ImageStore, view_state: &ViewState) {
-    let filename = store
-        .get(view_state.current_index)
-        .map(|slot| {
-            slot.meta
-                .path
-                .file_name()
-                .map(|s| s.to_string_lossy().to_string())
-                .unwrap_or_default()
-        })
-        .unwrap_or_default();
-
-    window.set_title(&view_state.title(&filename));
+    event_loop.run_app(&mut app).expect("Event loop error");
 }

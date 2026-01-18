@@ -48,8 +48,8 @@ impl MemoryConfig {
 impl Default for MemoryConfig {
     fn default() -> Self {
         Self {
-            budget_ratio: 0.10, // 10% of RAM
-            min_budget: 100 * 1024 * 1024,  // 100 MB
+            budget_ratio: 0.10,                 // 10% of RAM
+            min_budget: 100 * 1024 * 1024,      // 100 MB
             max_budget: 4 * 1024 * 1024 * 1024, // 4 GB
         }
     }
@@ -147,7 +147,6 @@ impl PreloadConfig {
         self.ahead_forward.max(self.behind_backward) + 5
     }
 }
-
 
 /// Rendering configuration
 #[derive(Debug, Clone)]

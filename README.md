@@ -4,13 +4,13 @@
 [![codecov](https://codecov.io/gh/Occy88/fiv/branch/main/graph/badge.svg)](https://codecov.io/gh/Occy88/fiv)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-A high-performance image viewer built in Rust with zero loading time.
+A fast, lightweight image viewer built in Rust.
 
 ## Features
 
-- **Zero loading time** - Predictive preloading ensures images are ready before you need them
-- **Lock-free architecture** - Smooth navigation even with large images
-- **Lightweight** - Minimal memory footprint with smart caching
+- **Instant navigation** - Images are preloaded in the background as you browse
+- **Smooth scrolling** - Hold arrow keys to rapidly flip through images
+- **Lightweight** - Minimal memory usage with smart caching
 - **Wide format support** - JPEG, PNG, GIF, BMP, WebP
 
 ## Installation

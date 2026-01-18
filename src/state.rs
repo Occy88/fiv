@@ -146,7 +146,11 @@ impl InputState {
 
     /// Check if any navigation is active (for control flow)
     pub fn is_navigating(&self) -> bool {
-        self.right_held || self.left_held || self.home_pressed || self.end_pressed || self.pending_click.is_some()
+        self.right_held
+            || self.left_held
+            || self.home_pressed
+            || self.end_pressed
+            || self.pending_click.is_some()
     }
 }
 
