@@ -1,0 +1,35 @@
+[package]
+name = "picto"
+version = "0.1.0"
+edition = "2021"
+description = "A super efficient image viewer with zero loading time"
+authors = ["c4r4mel"]
+
+[dependencies]
+# Window and graphics - use compatible versions
+winit = "0.28"
+pixels = "0.13"
+
+# Image decoding
+image = { version = "0.25", default-features = false, features = ["jpeg", "png", "gif", "bmp", "webp"] }
+zune-jpeg = "0.4"
+
+# Parallel processing for background preloading
+rayon = "1.10"
+crossbeam-channel = "0.5"
+
+# CLI
+clap = { version = "4.5", features = ["derive"] }
+
+# Fast directory scanning
+walkdir = "2.5"
+
+# System info for memory detection
+sysinfo = "0.32"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true
