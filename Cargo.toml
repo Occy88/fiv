@@ -1,9 +1,15 @@
 [package]
-name = "picto"
+name = "fiv"
 version = "0.1.0"
 edition = "2021"
 description = "A super efficient image viewer with zero loading time"
 authors = ["c4r4mel"]
+license = "MIT"
+repository = "https://github.com/Occy88/fiv"
+homepage = "https://github.com/Occy88/fiv"
+readme = "README.md"
+keywords = ["image", "viewer", "fast", "gui"]
+categories = ["multimedia::images", "command-line-utilities"]
 
 [dependencies]
 # Window and graphics - use compatible versions
@@ -33,3 +39,34 @@ lto = true
 codegen-units = 1
 panic = "abort"
 strip = true
+
+# The profile that 'dist' will build with
+[profile.dist]
+inherits = "release"
+lto = "thin"
+
+# Debian package configuration
+[package.metadata.deb]
+maintainer = "c4r4mel"
+copyright = "2024, c4r4mel"
+license-file = ["LICENSE", "0"]
+extended-description = """
+Fiv (Fast Image Viewer) is a high-performance image viewer built in Rust.
+Features:
+- Zero loading time with predictive preloading
+- Lock-free architecture for smooth navigation
+- Supports JPEG, PNG, GIF, BMP, and WebP formats
+- Minimal memory footprint with smart caching
+"""
+depends = "$auto"
+section = "graphics"
+priority = "optional"
+assets = [
+    ["target/release/fiv", "usr/bin/", "755"],
+]
+
+# RPM package configuration
+[package.metadata.generate-rpm]
+assets = [
+    { source = "target/release/fiv", dest = "/usr/bin/fiv", mode = "755" },
+]

@@ -1,4 +1,4 @@
-//! Picto - A high-performance image viewer.
+//! Fiv - A high-performance image viewer (Fast Image Viewer).
 //!
 //! Architecture overview:
 //! - Lock-free image slots for zero-contention access
@@ -35,7 +35,7 @@ use winit::event_loop::{ControlFlow, EventLoop};
 use winit::window::{Window, WindowBuilder};
 
 #[derive(Parser, Debug)]
-#[command(name = "picto")]
+#[command(name = "fiv")]
 #[command(about = "A high-performance image viewer", long_about = None)]
 struct Args {
     /// Directory containing images
@@ -67,7 +67,7 @@ fn main() {
     let event_loop = EventLoop::new();
 
     let window = WindowBuilder::new()
-        .with_title("Picto - Loading...")
+        .with_title("Fiv - Loading...")
         .with_inner_size(LogicalSize::new(
             config.render.default_width,
             config.render.default_height,

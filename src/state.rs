@@ -118,9 +118,7 @@ impl InputState {
         }
 
         // Check if a key is being held
-        let Some(start) = self.press_start else {
-            return None;
-        };
+        let start = self.press_start?;
 
         let held_duration = now.duration_since(start);
 
@@ -149,18 +147,6 @@ impl InputState {
     /// Check if any navigation is active (for control flow)
     pub fn is_navigating(&self) -> bool {
         self.right_held || self.left_held || self.home_pressed || self.end_pressed || self.pending_click.is_some()
-    }
-
-    /// Reset all state
-    pub fn reset(&mut self) {
-        self.right_held = false;
-        self.left_held = false;
-        self.home_pressed = false;
-        self.end_pressed = false;
-        self.press_start = None;
-        self.press_direction = 0;
-        self.in_repeat_mode = false;
-        self.pending_click = None;
     }
 }
 
@@ -232,16 +218,6 @@ impl ViewState {
         self.last_render_quality = None;
     }
 
-    /// Go to specific index
-    pub fn goto(&mut self, index: usize) {
-        if self.total_images == 0 {
-            return;
-        }
-        self.current_index = index % self.total_images;
-        self.needs_render = true;
-        self.last_render_quality = None;
-    }
-
     /// Update window size
     pub fn resize(&mut self, width: u32, height: u32) {
         if width > 0 && height > 0 {
@@ -279,10 +255,10 @@ impl ViewState {
         };
 
         if self.total_images == 0 {
-            "Picto - No images found".to_string()
+            "Fiv - No images found".to_string()
         } else {
             format!(
-                "Picto - {} [{}/{}]{}",
+                "Fiv - {} [{}/{}]{}",
                 filename,
                 self.current_index + 1,
                 self.total_images,
@@ -372,11 +348,6 @@ impl SharedState {
         }
     }
 
-    /// Get generation counter (preloader)
-    pub fn generation(&self) -> usize {
-        self.generation.load(Ordering::SeqCst)
-    }
-
     /// Signal shutdown (main thread)
     pub fn shutdown(&self) {
         self.shutdown.store(1, Ordering::SeqCst);
@@ -412,8 +383,9 @@ mod tests {
         state.navigate(-1);
         assert_eq!(state.current_index, 0);
 
-        // Wrap forward
-        state.goto(9);
+        // Wrap forward (navigate to end then forward)
+        state.navigate(i32::MAX); // Go to last image
+        assert_eq!(state.current_index, 9);
         state.navigate(1);
         assert_eq!(state.current_index, 0);
 
@@ -476,11 +448,9 @@ mod tests {
         let state = SharedState::new();
 
         assert_eq!(state.current(), 0);
-        let gen0 = state.generation();
 
         state.set_current(5);
         assert_eq!(state.current(), 5);
-        assert!(state.generation() > gen0);
 
         assert!(!state.is_shutdown());
         state.shutdown();

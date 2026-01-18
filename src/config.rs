@@ -9,7 +9,7 @@ use sysinfo::System;
 
 /// Master configuration for the viewer.
 /// All behavioral parameters are here - no magic numbers elsewhere.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct Config {
     /// Memory management
     pub memory: MemoryConfig,
@@ -19,17 +19,6 @@ pub struct Config {
     pub preload: PreloadConfig,
     /// Rendering
     pub render: RenderConfig,
-}
-
-impl Default for Config {
-    fn default() -> Self {
-        Self {
-            memory: MemoryConfig::default(),
-            input: InputConfig::default(),
-            preload: PreloadConfig::default(),
-            render: RenderConfig::default(),
-        }
-    }
 }
 
 /// Memory budget configuration
@@ -219,17 +208,6 @@ impl QualityTier {
                 }
             }
         }
-    }
-
-    /// Estimate memory for RGBA image at this tier
-    pub fn estimate_memory(self, width: u32, height: u32) -> usize {
-        let (w, h) = self.target_dimensions(width, height);
-        (w as usize) * (h as usize) * 4
-    }
-
-    /// Iterator from lowest to highest quality
-    pub fn all() -> impl Iterator<Item = Self> {
-        [Self::Thumbnail, Self::Preview, Self::Full].into_iter()
     }
 }
 

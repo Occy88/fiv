@@ -495,6 +495,21 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3a3076410a55c90011c298b04d0cfa770b00fa04e1e3c97d3f6c9de105a03844"
 
 [[package]]
+name = "fiv"
+version = "0.1.0"
+dependencies = [
+ "clap",
+ "crossbeam-channel",
+ "image",
+ "pixels",
+ "rayon",
+ "sysinfo",
+ "walkdir",
+ "winit",
+ "zune-jpeg 0.4.21",
+]
+
+[[package]]
 name = "flate2"
 version = "1.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1146,21 +1161,6 @@ name = "percent-encoding"
 version = "2.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9b4f627cb1b25917193a259e49bdad08f671f8d9708acfd5fe0a8c1455d87220"
-
-[[package]]
-name = "picto"
-version = "0.1.0"
-dependencies = [
- "clap",
- "crossbeam-channel",
- "image",
- "pixels",
- "rayon",
- "sysinfo",
- "walkdir",
- "winit",
- "zune-jpeg 0.4.21",
-]
 
 [[package]]
 name = "pixels"

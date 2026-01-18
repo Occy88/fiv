@@ -10,9 +10,7 @@ use std::sync::Arc;
 
 /// Result of a render operation
 pub struct RenderResult {
-    /// Whether rendering succeeded
-    pub success: bool,
-    /// Quality tier of rendered image (if any)
+    /// Quality tier of rendered image (None if no image available)
     pub quality: Option<QualityTier>,
 }
 
@@ -43,10 +41,7 @@ pub fn render_image(
     let img = match image_data {
         Some(data) => data,
         None => {
-            return RenderResult {
-                success: false,
-                quality: None,
-            };
+            return RenderResult { quality: None };
         }
     };
 
@@ -56,10 +51,7 @@ pub fn render_image(
     let img_h = img.height as usize;
 
     if win_w == 0 || win_h == 0 || img_w == 0 || img_h == 0 {
-        return RenderResult {
-            success: true,
-            quality: Some(img.quality),
-        };
+        return RenderResult { quality: Some(img.quality) };
     }
 
     // Calculate scaling to fit window while maintaining aspect ratio (letterbox)
@@ -87,10 +79,7 @@ pub fn render_image(
         display_h,
     );
 
-    RenderResult {
-        success: true,
-        quality: Some(img.quality),
-    }
+    RenderResult { quality: Some(img.quality) }
 }
 
 /// Clear frame buffer to a solid color
@@ -111,15 +100,8 @@ pub fn clear_frame(frame: &mut [u8], color: [u8; 4]) {
 }
 
 /// Blit source image to destination with nearest-neighbor scaling.
-///
-/// # Arguments
-/// * `src` - Source pixels (RGBA)
-/// * `src_w`, `src_h` - Source dimensions
-/// * `dst` - Destination buffer (RGBA)
-/// * `dst_stride` - Destination row stride in pixels
-/// * `dst_x`, `dst_y` - Destination offset
-/// * `dst_w`, `dst_h` - Destination region size
 #[inline]
+#[allow(clippy::too_many_arguments)]
 fn blit_scaled(
     src: &[u8],
     src_w: usize,
@@ -161,7 +143,7 @@ fn blit_scaled(
 }
 
 /// Blit with bilinear interpolation (higher quality, slower)
-#[allow(dead_code)]
+#[allow(dead_code, clippy::too_many_arguments)]
 pub fn blit_bilinear(
     src: &[u8],
     src_w: usize,
@@ -235,7 +217,6 @@ mod tests {
         let mut frame = vec![0u8; 100 * 100 * 4];
         let result = render_image(None, &mut frame, 100, 100, [0, 0, 0, 255]);
 
-        assert!(!result.success);
         assert!(result.quality.is_none());
     }
 
@@ -246,7 +227,6 @@ mod tests {
 
         let result = render_image(Some(&img), &mut frame, 100, 100, [0, 0, 0, 255]);
 
-        assert!(result.success);
         assert_eq!(result.quality, Some(QualityTier::Full));
     }
 

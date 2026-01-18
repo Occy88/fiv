@@ -44,36 +44,16 @@ impl ImageData {
     }
 }
 
-/// Immutable metadata about an image (derived from file/headers).
+/// Immutable metadata about an image.
 #[derive(Debug, Clone)]
 pub struct ImageMeta {
     /// Path to the image file
     pub path: PathBuf,
-    /// Original width (from headers, before any scaling)
-    pub original_width: u32,
-    /// Original height (from headers, before any scaling)
-    pub original_height: u32,
 }
 
 impl ImageMeta {
-    pub fn new(path: PathBuf, width: u32, height: u32) -> Self {
-        Self {
-            path,
-            original_width: width,
-            original_height: height,
-        }
-    }
-
-    /// Estimate memory for full resolution RGBA
-    #[inline]
-    pub fn full_memory_estimate(&self) -> usize {
-        (self.original_width as usize) * (self.original_height as usize) * 4
-    }
-
-    /// Estimate memory for a specific tier
-    #[inline]
-    pub fn memory_for_tier(&self, tier: QualityTier) -> usize {
-        tier.estimate_memory(self.original_width, self.original_height)
+    pub fn new(path: PathBuf) -> Self {
+        Self { path }
     }
 }
 
@@ -211,12 +191,6 @@ impl ImageSlot {
         self.set(None);
     }
 
-    /// Get current generation (for change detection)
-    #[inline]
-    pub fn generation(&self) -> u64 {
-        self.generation.load(Ordering::Acquire)
-    }
-
     /// Estimate memory currently used by this slot
     pub fn memory_used(&self) -> usize {
         let ptr = self.data_ptr.load(Ordering::Acquire);
@@ -256,7 +230,7 @@ mod tests {
 
     #[test]
     fn test_empty_slot() {
-        let meta = ImageMeta::new(PathBuf::from("test.jpg"), 100, 100);
+        let meta = ImageMeta::new(PathBuf::from("test.jpg"));
         let slot = ImageSlot::new(meta);
 
         assert!(slot.is_empty());
@@ -266,7 +240,7 @@ mod tests {
 
     #[test]
     fn test_upgrade() {
-        let meta = ImageMeta::new(PathBuf::from("test.jpg"), 100, 100);
+        let meta = ImageMeta::new(PathBuf::from("test.jpg"));
         let slot = ImageSlot::new(meta);
 
         // First data
@@ -287,7 +261,7 @@ mod tests {
 
     #[test]
     fn test_read_returns_clone() {
-        let meta = ImageMeta::new(PathBuf::from("test.jpg"), 100, 100);
+        let meta = ImageMeta::new(PathBuf::from("test.jpg"));
         let slot = ImageSlot::new(meta);
 
         let data = make_test_data(QualityTier::Full);
@@ -300,21 +274,5 @@ mod tests {
         assert_eq!(Arc::strong_count(&read1), 3); // slot + read1 + read2
         drop(read2);
         assert_eq!(Arc::strong_count(&read1), 2); // slot + read1
-    }
-
-    #[test]
-    fn test_generation_increments() {
-        let meta = ImageMeta::new(PathBuf::from("test.jpg"), 100, 100);
-        let slot = ImageSlot::new(meta);
-
-        let gen0 = slot.generation();
-
-        slot.upgrade(make_test_data(QualityTier::Thumbnail));
-        let gen1 = slot.generation();
-        assert!(gen1 > gen0);
-
-        slot.upgrade(make_test_data(QualityTier::Full));
-        let gen2 = slot.generation();
-        assert!(gen2 > gen1);
     }
 }

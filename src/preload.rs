@@ -199,7 +199,7 @@ pub fn create_store_fast(
 ) -> ImageStore {
     let metas: Vec<ImageMeta> = paths
         .into_iter()
-        .map(|path| ImageMeta::new(path, 0, 0))
+        .map(ImageMeta::new)
         .collect();
 
     ImageStore::with_metadata(metas, budget)

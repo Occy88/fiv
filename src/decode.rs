@@ -4,7 +4,7 @@
 //! It provides a clean interface for decoding images at various quality tiers.
 
 use crate::config::QualityTier;
-use crate::slot::{ImageData, ImageMeta};
+use crate::slot::ImageData;
 use std::fs;
 use std::path::Path;
 use std::sync::Arc;
@@ -36,22 +36,6 @@ impl Decoder {
     /// Get supported extensions
     pub fn extensions(&self) -> &[&'static str] {
         &self.supported_extensions
-    }
-
-    /// Extract metadata from image file (fast, headers only when possible)
-    pub fn get_metadata(&self, path: &Path) -> Option<ImageMeta> {
-        let data = fs::read(path).ok()?;
-
-        // Try JPEG header extraction first
-        if Self::is_jpeg(path) {
-            if let Some((w, h)) = Self::jpeg_dimensions(&data) {
-                return Some(ImageMeta::new(path.to_path_buf(), w, h));
-            }
-        }
-
-        // Fallback: decode with image crate
-        let img = image::load_from_memory(&data).ok()?;
-        Some(ImageMeta::new(path.to_path_buf(), img.width(), img.height()))
     }
 
     /// Decode image at specified quality tier
@@ -86,17 +70,6 @@ impl Decoder {
                 lower == "jpg" || lower == "jpeg"
             })
             .unwrap_or(false)
-    }
-
-    /// Extract JPEG dimensions from headers (fast)
-    fn jpeg_dimensions(data: &[u8]) -> Option<(u32, u32)> {
-        let mut decoder = zune_jpeg::JpegDecoder::new(data);
-        if decoder.decode_headers().is_ok() {
-            if let Some(info) = decoder.info() {
-                return Some((info.width as u32, info.height as u32));
-            }
-        }
-        None
     }
 
     /// Decode JPEG using zune-jpeg (fast)
